@@ -37,7 +37,6 @@ def generate_ensemble_threshold(df, target_column, feature_nums, class_nums, thr
 
     threshold_accuracy = np.zeros(threshold_nums)  # 儲存 threshold_nums 次最高的準確率
     
-
     for iter in range(threshold_nums):
         models_accuracy = np.zeros(models_nums)  # 儲存單一迭代中，models_nums 個模型的準確率
         for model in range(models_nums):
@@ -81,37 +80,62 @@ def cv_with_random_model(X, y, feature_nums, class_nums, threshold_nums, models_
                     pbar.update(1)
     end_time = time.time()
     exec_time = end_time - start_time
+    log_path = "TRENB_accuracies_log.txt"
+    write_log(log_path, f"隨機生成基本模型執行時間: {exec_time:.4f} 秒")
     print(f"隨機生成基本模型執行時間: {exec_time:.4f} 秒")  # 輸出總執行時間
     return fold_accuracies, fold_nb_models_prior, fold_nb_models_likelihood
 
+# 建立開日誌檔後記錄 log 內容
+def write_log(log_path,msg):
+    with open(log_path, "a", encoding="utf-8") as log:
+        log.write(f"{msg}\n")
 
 if __name__ == "__main__":
+    np.random.seed(42)   # 設定隨機種子
+    # 建立 log 日誌儲存資訊
+    log_path = "TRENB_accuracies_log.txt"
     k = 5    # k 折交叉驗證次數
     base_dir = Path.cwd()             
-    data_path = os.path.join(base_dir, "datasets", "離散化資料集","二類別","Heart Failure.csv")
-    df = pd.read_csv(data_path)
+    parent_path = base_dir.parent   # 取得上層路徑
+    datasets = ["Algerian","Banknote","Climate","Diabetes","Electrical","German"]
+    for dataset in datasets:
+        data_path = os.path.join(parent_path, "datasets", "離散化資料集","二類別",f"{dataset}.csv")
+        df = pd.read_csv(data_path)
 
-    target_column = 'class'
-    X = df.drop(columns = [target_column]).values
-    y = df[target_column].values
-    feature_nums = len(X[0])
-    class_nums = len(set(y))
+        target_column = 'class'
+        X = df.drop(columns = [target_column]).values
+        y = df[target_column].values
+        feature_nums = len(X[0])
+        class_nums = len(set(y))
 
-    # 計算門檻時迭代 20 次,每次跑 1000 個模型，最後在生成 125 (一個 fold 25 個)個基本模型
-    fold_accuracies, fold_nb_models_prior, fold_nb_models_likelihood = cv_with_random_model(X, y, feature_nums, class_nums, 20, 1000, k)
+        # 計算門檻時迭代 20 次,每次跑 1000 個模型，最後在生成 125 (一個 fold 25 個)個基本模型
+        fold_accuracies, fold_nb_models_prior, fold_nb_models_likelihood = cv_with_random_model(X, y, feature_nums, class_nums, 20, 1000, k)
 
-    # 記錄 five-fold 裡共 125 個基本模型的 c1 機率
-    five_fold_prior_c1 = []
-    for fold in fold_nb_models_prior:
-        for prior_c1,prior_c2 in fold:
-            five_fold_prior_c1.append(prior_c1)
-    
-     # 畫 KDE 機率密度分布圖
-    plt.figure(figsize=(8, 5))
-    sns.kdeplot(five_fold_prior_c1, fill=True, color="skyblue", linewidth=2)
-    plt.title("Kernel Density Estimation of Class 1 Probabilities")
-    plt.xlabel("Probability for Class 1")
-    plt.ylabel("Density")
-    plt.grid(True)
-    plt.savefig(os.path.join(base_dir, "charts", "TRENB_prior_c1.jpg"))
-    plt.close()
+        # 記錄 five-fold 裡共 125 個基本模型的 c1 機率
+        five_fold_prior_c1 = []
+        for fold in fold_nb_models_prior:
+            for prior_c1,prior_c2 in fold:
+                five_fold_prior_c1.append(prior_c1)
+        
+        five_fold_accuracies = []
+        for fold in fold_accuracies:
+            for model_accuracy in fold:
+                five_fold_accuracies.append(model_accuracy)
+
+        # 畫垂直 Boxplot 圖
+        plt.figure(figsize = (5, 8))
+        sns.boxplot(y = five_fold_prior_c1, color = "skyblue")  # 使用 y= 垂直顯示
+
+        plt.title("Boxplot of Class 1 Probabilities of TRENB")
+        plt.ylabel("Probability for Class 1")
+
+        # 刻度精細化
+        plt.yticks(np.arange(0, 1.1, 0.1))
+
+        plt.grid(axis="y", linestyle="--", alpha=0.7)
+        plt.savefig(os.path.join(parent_path, "charts", f"{dataset}_TRENB_prior_c1_boxplot.jpg"))
+        plt.close()
+
+        avg_accuracy = np.mean(fold_accuracies)
+        msg = f"{dataset} TRENB 五折平均準確率: {avg_accuracy}"
+        write_log(log_path, msg)

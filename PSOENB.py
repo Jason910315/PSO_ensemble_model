@@ -173,32 +173,62 @@ def cv_with_PSO_model(X, y, feature_nums, class_nums, k, num_particles, bounds, 
                 pbar.update(1)
     end_time = time.time()
     exec_time = end_time - start_time
+    log_path = "PSO_accuracies_log.txt"
+    write_log(log_path, f"隨機生成基本模型執行時間: {exec_time:.4f} 秒")
     print(f"隨機生成基本模型執行時間: {exec_time:.4f} 秒")  # 輸出總執行時間
     return fold_accuracies, fold_PSO_models_prior, fold_PSO_models_likelihood
 
+# 建立開日誌檔後記錄 log 內容
+def write_log(log_path,msg):
+    with open(log_path, "a", encoding="utf-8") as log:
+        log.write(f"{msg}\n")
 
 if __name__ == "__main__":
+    np.random.seed(42)   # 設定隨機種子
+    # 建立 log 日誌儲存資訊
+    log_path = "PSO_accuracies_log.txt"
     k = 5    # k 折交叉驗證次數
     base_dir = Path.cwd()             
     parent_path = base_dir.parent   # 取得上層路徑
-    data_path = os.path.join(parent_path, "datasets", "離散化資料集","二類別","Heart Failure.csv")
-    df = pd.read_csv(data_path)
-    
-    target_column = 'class'
-    X = df.drop(columns = [target_column]).values
-    y = df[target_column].values
-    feature_nums = len(X[0])
-    class_nums = len(set(y))
-    bounds = (1e-10, 1)
-    num_particles = 50  # 粒子數
-    max_iter = 100
-    stop_time = 5
+    datasets = ["Electrical","German"]
+    for dataset in datasets:
+        data_path = os.path.join(parent_path, "datasets", "離散化資料集","二類別",f"{dataset}.csv")
+        df = pd.read_csv(data_path)
+        
+        target_column = 'class'
+        X = df.drop(columns = [target_column]).values
+        y = df[target_column].values
+        feature_nums = len(X[0])
+        class_nums = len(set(y))
+        bounds = (1e-10, 1)
+        num_particles = 50  # 粒子數
+        max_iter = 100
+        stop_time = 5
 
-    # 使用 PSO 生成基本模型
-    fold_accuracies, fold_PSO_models_prior, fold_PSO_models_likelihood = cv_with_PSO_model(X, y, feature_nums, class_nums, k, num_particles, bounds, max_iter, stop_time)
+        # 使用 PSO 生成基本模型
+        fold_accuracies, fold_PSO_models_prior, fold_PSO_models_likelihood = cv_with_PSO_model(X, y, feature_nums, class_nums, k, num_particles, bounds, max_iter, stop_time)
 
-    # 記錄 five-fold 裡共 125 個基本模型的 c1 機率
-    five_fold_prior_c1 = []
-    for fold in fold_PSO_models_prior:
-        for prior_c1,prior_c2 in fold:
-            five_fold_prior_c1.append(prior_c1)
+        # 記錄 five-fold 裡共 125 個基本模型的 c1 機率
+        five_fold_prior_c1 = []
+        for fold in fold_PSO_models_prior:
+            for prior_c1,prior_c2 in fold:
+                five_fold_prior_c1.append(prior_c1)
+
+            # 畫垂直 Boxplot 圖
+         # 畫垂直 Boxplot 圖
+        plt.figure(figsize = (5, 8))
+        sns.boxplot(y = five_fold_prior_c1, color = "skyblue")  # 使用 y= 垂直顯示
+
+        plt.title("Boxplot of Class 1 Probabilities of PSO")
+        plt.ylabel("Probability for Class 1")
+
+        # 刻度精細化
+        plt.yticks(np.arange(0, 1.1, 0.1))
+
+        plt.grid(axis="y", linestyle="--", alpha=0.7)
+        plt.savefig(os.path.join(parent_path, "charts", f"{dataset}_PSO_prior_c1_boxplot.jpg"))
+        plt.close()
+
+        avg_accuracy = np.mean(fold_accuracies)
+        msg = f"{dataset} PSO 五折平均準確率: {avg_accuracy}"
+        write_log(log_path, msg)
