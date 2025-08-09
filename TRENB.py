@@ -11,21 +11,22 @@ from tqdm import tqdm
 def random_naive_model(feature_nums, class_nums):
     # 使用 dirichlet() 生成隨機的先驗機率，其總和為 1
     random_prior = np.random.dirichlet(np.ones(class_nums))
-    # 隨機生成的 likelihood，格式為 feature_{feature_index} : 類別 0 [feature_index 特徵所有可能值的機率],...,類別 n [feature_index 特徵所有可能值的機率]
-    random_likelihood = {
-                f"feature_{feature_index}": np.array([np.random.dirichlet(np.ones(10)) for _ in range(class_nums)])
-                for feature_index in range(feature_nums) }
+    # 隨機生成的 likelihood
+    random_likelihood = np.random.dirichlet(np.ones(10), size = (feature_nums, class_nums))
     return random_prior,random_likelihood
 
 # 根據隨機生成的機率，預測樣本類別
 def prediction(X, prior, likelihood):
     predictions = []
+
+    N = len(X)
+    F, C, V = likelihood.shape
     # 預測每個樣本
-    for x in X:
-        # 針對單一樣本的每個特徵 j，取出 int(x[j]) 的機率 (特徵值)
-        posterior = prior * np.prod([likelihood[f"feature_{j}"][:, int(x[j])] for j in range(len(x))], axis = 0)
-        predicted_class = np.argmax(posterior)
-        predictions.append(predicted_class)
+    posterior = np.tile(prior, (N, 1))   # 形成一個 (N, C) 的矩陣
+
+    for f in range(F):
+        posterior *= likelihood[f][:, X[:,f]].T
+    predictions = np.argmax(posterior, axis = 1)
     return np.array(predictions)
 
 # 用原始資料集不斷產生模型計算準確率，挑出門檻
@@ -47,7 +48,7 @@ def generate_ensemble_threshold(X, y, feature_nums, class_nums, threshold_nums, 
 
 def cv_with_random_model(X, y, feature_nums, class_nums, threshold_nums, models_nums, k):
     threshold = generate_ensemble_threshold(X, y, feature_nums, class_nums, threshold_nums, models_nums)
-
+    print(f"threshold = {threshold}")
     # 分割 fold 訓練與測試
     kf = KFold(n_splits = k, shuffle = True, random_state = 42)    
 
@@ -115,8 +116,8 @@ if __name__ == "__main__":
     k = 5    # k 折交叉驗證次數
     base_dir = Path.cwd()             
     parent_path = base_dir.parent   # 取得上層路徑
-    # datasets = ["Algerian","Banknote","Climate","Diabetes","Electrical","German"]
-    datasets = ["Algerian"]
+    datasets = ["Algerian","Banknote","Climate","Diabetes","Electrical","German"]
+
     for dataset in datasets:
         data_path = os.path.join(parent_path, "datasets", "離散化資料集","二類別",f"{dataset}.csv")
         df = pd.read_csv(data_path)
@@ -140,7 +141,7 @@ if __name__ == "__main__":
         plt.figure(figsize = (5, 8))
         sns.boxplot(y = five_fold_prior_c1, color = "skyblue")  # 使用 y= 垂直顯示
 
-        plt.title("Boxplot of Class 1 Probabilities of TRENB")
+        plt.title(f"Class 1 Probabilities of {dataset} TRENB")
         plt.ylabel("Probability for Class 1")
 
         # 刻度精細化
@@ -151,5 +152,6 @@ if __name__ == "__main__":
         plt.close()
 
         avg_accuracy = np.mean(fold_test_accuracies)
-        msg = f"{dataset} TRENB 五折平均準確率: {avg_accuracy}"
+        msg = f"{dataset} TRENB 五折平均準確率: {avg_accuracy}\n"
+        msg += "----------------------------------------"
         write_log(log_path, msg)
